@@ -4,7 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"os"
+	"path/filepath"
 )
 
 type Config struct {
@@ -20,24 +21,38 @@ func main() {
 
 	config, err := loadConfig(*configPath)
 	if err != nil {
+		fmt.Printf("Error loading config: %v\n", err)
 		panic(err)
 	}
 
-	fmt.Println(config)
+	combinedPaths := combineBaseDirectory(config)
+	for _, path := range combinedPaths {
+		fmt.Println(path)
+	}
 }
 
 func loadConfig(filename string) (*Config, error) {
-	fmt.Println("Loading config from", filename)
-	data, err := ioutil.ReadFile(filename)
+	f, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	var config Config
-	err = json.Unmarshal(data, &config)
+	err = json.NewDecoder(f).Decode(&config)
 	if err != nil {
+		// fmt.Print("hogehoge")
 		return nil, err
 	}
 
 	return &config, nil
+}
+
+func combineBaseDirectory(config *Config) []string {
+	var combinedPaths []string
+	for _, dir := range config.Directories {
+		combinedPath := filepath.Join(config.BaseDirectory, dir.Path)
+		combinedPaths = append(combinedPaths, combinedPath)
+	}
+	return combinedPaths
 }
