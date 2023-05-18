@@ -23,7 +23,7 @@ func main() {
 	config, err := LoadConfig(*configPath)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
-		panic(err)
+		return
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
@@ -43,10 +43,11 @@ func main() {
 		wg.Add(1)
 		go func(directory string) {
 			defer wg.Done()
-			if err := runTerraformInit(ctx, directory, outCh); err != nil {
+			if err := runTerraformCommand(ctx, "init", directory, outCh); err != nil {
 				fmt.Printf("Error running terraform init in directory %s: %v\n", directory, err)
+				return
 			}
-			if err := runTerraformPlan(ctx, directory, outCh); err != nil {
+			if err := runTerraformCommand(ctx, "plan", directory, outCh); err != nil {
 				fmt.Printf("Error running terraform plan in directory %s: %v\n", directory, err)
 			}
 		}(dir)
@@ -76,8 +77,8 @@ func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outpu
 	}
 }
 
-func runTerraformInit(ctx context.Context, directory string, ch chan<- outputLine) error {
-	cmd := exec.CommandContext(ctx, "terraform", "init")
+func runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
+	cmd := exec.CommandContext(ctx, "terraform", command)
 	cmd.Dir = directory
 
 	stdout, err := cmd.StdoutPipe()
@@ -89,7 +90,6 @@ func runTerraformInit(ctx context.Context, directory string, ch chan<- outputLin
 	if err != nil {
 		return fmt.Errorf("error creating stderr pipe: %w", err)
 	}
-
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting command: %w", err)
 	}
@@ -99,40 +99,9 @@ func runTerraformInit(ctx context.Context, directory string, ch chan<- outputLin
 
 	if err := cmd.Wait(); err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("terraform init in directory %s timed out", directory)
+			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
 		}
-		return fmt.Errorf("error running terraform init: %w", err)
-	}
-
-	return nil
-}
-
-func runTerraformPlan(ctx context.Context, directory string, ch chan<- outputLine) error {
-	cmd := exec.CommandContext(ctx, "terraform", "plan")
-	cmd.Dir = directory
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("error creating stdout pipe: %w", err)
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("error creating stderr pipe: %w", err)
-	}
-
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("error starting command: %w", err)
-	}
-
-	go readOutput(ctx, directory+" [stdout]", stdout, ch)
-	go readOutput(ctx, directory+" [stderr]", stderr, ch)
-
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("terraform plan in directory %s timed out", directory)
-		}
-		return fmt.Errorf("error running terraform plan: %w", err)
+		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
 	return nil
