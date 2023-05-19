@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"path/filepath"
 	"sync"
 )
 
@@ -26,18 +25,18 @@ func main() {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
-	defer cancel()
-	directories := combineBaseDirectory(config)
-
-	var wg sync.WaitGroup
-
 	outCh := make(chan outputLine)
 	go func() {
 		for line := range outCh {
 			fmt.Printf("%s: %s\n", line.source, line.line)
 		}
 	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
+	defer cancel()
+	directories := config.getDirectories()
+
+	var wg sync.WaitGroup
 
 	for _, dir := range directories {
 		wg.Add(1)
@@ -55,15 +54,6 @@ func main() {
 
 	wg.Wait()
 	close(outCh)
-}
-
-func combineBaseDirectory(config *Config) []string {
-	var combinedPaths []string
-	for _, dir := range config.Directories {
-		combinedPath := filepath.Join(config.BaseDirectory, dir.Path)
-		combinedPaths = append(combinedPaths, combinedPath)
-	}
-	return combinedPaths
 }
 
 func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outputLine) {

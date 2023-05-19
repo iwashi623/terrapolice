@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 )
 
@@ -53,4 +54,13 @@ func (c *Config) setTimeOut() error {
 		c.Timeout = c.Timeout * time.Second
 	}
 	return nil
+}
+
+func (c *Config) getDirectories() []string {
+	var combinedPaths []string
+	for _, dir := range c.Directories {
+		combinedPath := filepath.Join(c.BaseDirectory, dir.Path)
+		combinedPaths = append(combinedPaths, combinedPath)
+	}
+	return combinedPaths
 }
