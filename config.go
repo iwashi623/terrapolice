@@ -13,12 +13,15 @@ const (
 	DefaultTimeout = 300 * time.Second
 )
 
+type Directory struct {
+	Path string `json:"path"`
+}
+
 type Config struct {
 	BaseDirectory string `json:"base_directory"`
-	Directories   []struct {
-		Path string `json:"path"`
-	} `json:"directories"`
-	Timeout time.Duration `json:"timeout"`
+	Directories   []Directory
+	Timeout       time.Duration `json:"timeout"`
+	Norification  string        `json:"norification"`
 }
 
 func LoadConfig(filename string) (*Config, error) {

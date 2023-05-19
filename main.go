@@ -8,6 +8,8 @@ import (
 	"io"
 	"os/exec"
 	"sync"
+
+	"github.com/iwashi623/terrapolice/notification"
 )
 
 type outputLine struct {
@@ -87,12 +89,17 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 	go readOutput(ctx, directory+" [stdout]", stdout, ch)
 	go readOutput(ctx, directory+" [stderr]", stderr, ch)
 
-	if err := cmd.Wait(); err != nil {
+	err = cmd.Wait()
+
+	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
 		}
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
+
+	notifier := notification.CreateNotifier("slack")
+	notifier.Notify()
 
 	return nil
 }
