@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"strings"
 	"sync"
 
 	"github.com/iwashi623/terrapolice/notification"
@@ -109,18 +110,45 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	if command == terraformPlanCommand {
-		notifier := notification.CreateNotifier("slack_bot")
-		status, err := notification.NewStatus("success")
-		if err != nil {
-			return fmt.Errorf("error creating status: %w", err)
-		}
-		params := notification.NotifyParams{
-			Status: status,
-			Buffer: outBuffer,
-		}
-		notifier.Notify(params)
+	err = execNotify(command, outBuffer)
+	if err != nil {
+		return fmt.Errorf("error running execNotify: %w", err)
 	}
 
 	return nil
+}
+
+func execNotify(command string, buf *bytes.Buffer) error {
+	if command == terraformPlanCommand {
+		status, err := getNotificationStatus(buf)
+		if err != nil {
+			return fmt.Errorf("error getting notification status: %w", err)
+		}
+		params := getNotificationParams(*status, buf)
+		notifier := notification.NewNotifier("slack_bot")
+		notifier.Notify(*params)
+	}
+
+	return nil
+}
+
+func getNotificationStatus(buf *bytes.Buffer) (*notification.Status, error) {
+	status, err := notification.NewStatus("diff_detected")
+
+	if strings.Contains(buf.String(), "No changes.") {
+		status, err = notification.NewStatus("success")
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating status: %w", err)
+	}
+
+	return &status, nil
+}
+
+func getNotificationParams(status notification.Status, buf *bytes.Buffer) *notification.NotifyParams {
+	return &notification.NotifyParams{
+		Status: status,
+		Buffer: buf,
+	}
 }

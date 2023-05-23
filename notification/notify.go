@@ -23,7 +23,7 @@ type NotifyParams struct {
 	Buffer *bytes.Buffer
 }
 
-func CreateNotifier(option string) Notifier {
+func NewNotifier(option string) Notifier {
 	switch option {
 	case "slack":
 		return &SlackNotifier{
@@ -42,7 +42,7 @@ func CreateNotifier(option string) Notifier {
 
 func NewStatus(s string) (Status, error) {
 	switch s {
-	case string(StatusSuccess), string(StatusError):
+	case StatusSuccess, StatusError, StatusDiffDetected:
 		return Status(s), nil
 	default:
 		return "", fmt.Errorf("invalid status: %s", s)
