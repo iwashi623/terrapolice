@@ -1,11 +1,13 @@
 package notification
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type SlackBotNotifier struct {
 	SlackBotToken string
 }
 
-func (s *SlackBotNotifier) Notify() {
-	fmt.Println("slack notify")
+func (s *SlackBotNotifier) Notify(p NotifyParams) {
+	fmt.Println(p.Buffer.String())
 }

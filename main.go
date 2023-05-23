@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"flag"
 	"fmt"
@@ -10,6 +11,11 @@ import (
 	"sync"
 
 	"github.com/iwashi623/terrapolice/notification"
+)
+
+const (
+	terraformInitCommand = "init"
+	terraformPlanCommand = "plan"
 )
 
 type outputLine struct {
@@ -44,11 +50,11 @@ func main() {
 		wg.Add(1)
 		go func(directory string) {
 			defer wg.Done()
-			if err := runTerraformCommand(ctx, "init", directory, outCh); err != nil {
+			if err := runTerraformCommand(ctx, terraformInitCommand, directory, outCh); err != nil {
 				fmt.Printf("Error running terraform init in directory %s: %v\n", directory, err)
 				return
 			}
-			if err := runTerraformCommand(ctx, "plan", directory, outCh); err != nil {
+			if err := runTerraformCommand(ctx, terraformPlanCommand, directory, outCh); err != nil {
 				fmt.Printf("Error running terraform plan in directory %s: %v\n", directory, err)
 			}
 		}(dir)
@@ -58,14 +64,17 @@ func main() {
 	close(outCh)
 }
 
-func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outputLine) {
+func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outputLine, buffer *bytes.Buffer) {
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
+		line := scanner.Text()
 		select {
 		case <-ctx.Done():
 			return
-		case ch <- outputLine{source, scanner.Text()}:
+		case ch <- outputLine{source, line}:
 		}
+		buffer.WriteString(line)
+		buffer.WriteString("\n") // preserve newline
 	}
 }
 
@@ -86,8 +95,10 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
-	go readOutput(ctx, directory+" [stdout]", stdout, ch)
-	go readOutput(ctx, directory+" [stderr]", stderr, ch)
+	outBuffer := &bytes.Buffer{}
+	errBuffer := &bytes.Buffer{}
+	go readOutput(ctx, directory+" [stdout]", stdout, ch, outBuffer)
+	go readOutput(ctx, directory+" [stderr]", stderr, ch, errBuffer)
 
 	err = cmd.Wait()
 
@@ -98,8 +109,14 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	notifier := notification.CreateNotifier("slack")
-	notifier.Notify()
+	if command == terraformPlanCommand {
+		notifier := notification.CreateNotifier("slack_bot")
+		params := notification.NotifyParams{
+			Status: "success",
+			Buffer: outBuffer,
+		}
+		notifier.Notify(params)
+	}
 
 	return nil
 }

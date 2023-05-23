@@ -6,6 +6,10 @@ type SlackNotifier struct {
 	WebhookURL string
 }
 
-func (s *SlackNotifier) Notify() {
+type SlackNotifyParams struct {
+	Status string
+}
+
+func (s *SlackNotifier) Notify(p NotifyParams) {
 	fmt.Println("slack notify")
 }

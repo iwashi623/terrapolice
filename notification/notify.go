@@ -1,9 +1,17 @@
 package notification
 
-import "os"
+import (
+	"bytes"
+	"os"
+)
 
 type Notifier interface {
-	Notify()
+	Notify(p NotifyParams)
+}
+
+type NotifyParams struct {
+	Status string
+	Buffer *bytes.Buffer
 }
 
 func CreateNotifier(option string) Notifier {
