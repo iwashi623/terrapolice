@@ -13,6 +13,7 @@ type SlackNotifyParams struct {
 	Status string
 }
 
-func (s *SlackNotifier) Notify(ctx context.Context, params NotifyParams) {
+func (s *SlackNotifier) Notify(ctx context.Context, params *NotifyParams) error {
 	fmt.Println("slack notify")
+	return nil
 }

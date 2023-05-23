@@ -112,10 +112,14 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
 		}
+		execErr := execNotify(ctx, command, errBuffer, true)
+		if execErr != nil {
+			return fmt.Errorf("error running execNotify: %w", execErr)
+		}
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	err = execNotify(ctx, command, outBuffer)
+	err = execNotify(ctx, command, outBuffer, false)
 	if err != nil {
 		return fmt.Errorf("error running execNotify: %w", err)
 	}
@@ -123,35 +127,36 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 	return nil
 }
 
-func execNotify(ctx context.Context, command string, buf *bytes.Buffer) error {
-	if command == terraformPlanCommand {
-		status, err := getNotificationStatus(buf)
-		if err != nil {
-			return fmt.Errorf("error getting notification status: %w", err)
-		}
-		params := &notification.NotifyParams{
-			Status: *status,
-			Buffer: buf,
-		}
-		notifier := notification.NewNotifier("slack_bot")
-		notifier.Notify(ctx, *params)
+func execNotify(ctx context.Context, command string, buf *bytes.Buffer, isError bool) error {
+	var statusStr string
+	if isError {
+		statusStr = notification.StatusError
+	} else if command == terraformPlanCommand {
+		statusStr = getStatusStr(buf)
+	} else {
+		return nil
 	}
 
+	status, err := notification.NewStatus(statusStr)
+	if err != nil {
+		return fmt.Errorf("error creating status: %w", err)
+	}
+	params := &notification.NotifyParams{
+		Status: status,
+		Buffer: buf,
+	}
+	notifier := notification.NewNotifier("slack_bot")
+	notifier.Notify(ctx, params)
 	return nil
 }
 
-func getNotificationStatus(buf *bytes.Buffer) (*notification.Status, error) {
-	status, err := notification.NewStatus("diff_detected")
+func getStatusStr(buf *bytes.Buffer) string {
+	str := notification.StatusDiffDetected
 
 	// "No changes."という文字数が含まれている場合のみsuccessとする
 	// この判定はterraform planの出力に完全に依存しているため、判別方法は要検討
 	if strings.Contains(buf.String(), "No changes.") {
-		status, err = notification.NewStatus("success")
+		str = notification.StatusSuccess
 	}
-
-	if err != nil {
-		return nil, fmt.Errorf("error creating status: %w", err)
-	}
-
-	return &status, nil
+	return str
 }

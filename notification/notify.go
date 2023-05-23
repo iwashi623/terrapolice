@@ -14,7 +14,7 @@ const (
 )
 
 type Notifier interface {
-	Notify(ctx context.Context, params NotifyParams)
+	Notify(ctx context.Context, params *NotifyParams) error
 }
 
 type Status string
