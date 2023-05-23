@@ -2,6 +2,7 @@ package notification
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 )
@@ -13,7 +14,7 @@ const (
 )
 
 type Notifier interface {
-	Notify(p NotifyParams)
+	Notify(ctx context.Context, params NotifyParams)
 }
 
 type Status string
@@ -32,10 +33,12 @@ func NewNotifier(option string) Notifier {
 	case "slack_bot":
 		return &SlackBotNotifier{
 			SlackBotToken: os.Getenv("SLACK_BOT_TOKEN"),
+			SlackChannel:  os.Getenv("SLACK_CHANNEL"),
 		}
 	default:
 		return &SlackBotNotifier{
 			SlackBotToken: os.Getenv("SLACK_BOT_TOKEN"),
+			SlackChannel:  os.Getenv("SLACK_CHANNEL"),
 		}
 	}
 }

@@ -28,15 +28,19 @@ func main() {
 	configPath := flag.String("f", "terrapolice.json", "Path to the configuration file")
 	flag.Parse()
 
+	// 設定ファイルから設定を読み込む
+	// TODO .ymlファイル対応
 	config, err := LoadConfig(*configPath)
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		return
 	}
 
+	// 実行時ログを出力するためのチャネルを作成
 	outCh := make(chan outputLine)
 	go func() {
 		for line := range outCh {
+			// 実行時ログを出力
 			fmt.Printf("%s: %s\n", line.source, line.line)
 		}
 	}()
@@ -51,10 +55,12 @@ func main() {
 		wg.Add(1)
 		go func(directory string) {
 			defer wg.Done()
+			// Run terraform init
 			if err := runTerraformCommand(ctx, terraformInitCommand, directory, outCh); err != nil {
 				fmt.Printf("Error running terraform init in directory %s: %v\n", directory, err)
 				return
 			}
+			// Run terraform plan
 			if err := runTerraformCommand(ctx, terraformPlanCommand, directory, outCh); err != nil {
 				fmt.Printf("Error running terraform plan in directory %s: %v\n", directory, err)
 			}
@@ -74,8 +80,7 @@ func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outpu
 			return
 		case ch <- outputLine{source, line}:
 		}
-		buffer.WriteString(line)
-		buffer.WriteString("\n") // preserve newline
+		buffer.WriteString(line + "\n")
 	}
 }
 
@@ -110,7 +115,7 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	err = execNotify(command, outBuffer)
+	err = execNotify(ctx, command, outBuffer)
 	if err != nil {
 		return fmt.Errorf("error running execNotify: %w", err)
 	}
@@ -118,15 +123,18 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 	return nil
 }
 
-func execNotify(command string, buf *bytes.Buffer) error {
+func execNotify(ctx context.Context, command string, buf *bytes.Buffer) error {
 	if command == terraformPlanCommand {
 		status, err := getNotificationStatus(buf)
 		if err != nil {
 			return fmt.Errorf("error getting notification status: %w", err)
 		}
-		params := getNotificationParams(*status, buf)
+		params := &notification.NotifyParams{
+			Status: *status,
+			Buffer: buf,
+		}
 		notifier := notification.NewNotifier("slack_bot")
-		notifier.Notify(*params)
+		notifier.Notify(ctx, *params)
 	}
 
 	return nil
@@ -135,6 +143,8 @@ func execNotify(command string, buf *bytes.Buffer) error {
 func getNotificationStatus(buf *bytes.Buffer) (*notification.Status, error) {
 	status, err := notification.NewStatus("diff_detected")
 
+	// "No changes."という文字数が含まれている場合のみsuccessとする
+	// この判定はterraform planの出力に完全に依存しているため、判別方法は要検討
 	if strings.Contains(buf.String(), "No changes.") {
 		status, err = notification.NewStatus("success")
 	}
@@ -144,11 +154,4 @@ func getNotificationStatus(buf *bytes.Buffer) (*notification.Status, error) {
 	}
 
 	return &status, nil
-}
-
-func getNotificationParams(status notification.Status, buf *bytes.Buffer) *notification.NotifyParams {
-	return &notification.NotifyParams{
-		Status: status,
-		Buffer: buf,
-	}
 }
