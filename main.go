@@ -112,14 +112,14 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
 		}
-		execErr := execNotify(ctx, command, errBuffer, true)
+		execErr := execNotify(ctx, command, directory, errBuffer, true)
 		if execErr != nil {
 			return fmt.Errorf("error running execNotify: %w", execErr)
 		}
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	err = execNotify(ctx, command, outBuffer, false)
+	err = execNotify(ctx, command, directory, outBuffer, false)
 	if err != nil {
 		return fmt.Errorf("error running execNotify: %w", err)
 	}
@@ -127,7 +127,7 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 	return nil
 }
 
-func execNotify(ctx context.Context, command string, buf *bytes.Buffer, isError bool) error {
+func execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
 	var statusStr string
 	if isError {
 		statusStr = notification.StatusError
@@ -142,8 +142,10 @@ func execNotify(ctx context.Context, command string, buf *bytes.Buffer, isError 
 		return fmt.Errorf("error creating status: %w", err)
 	}
 	params := &notification.NotifyParams{
-		Status: status,
-		Buffer: buf,
+		Status:    status,
+		Buffer:    buf,
+		Command:   command,
+		Directory: directory,
 	}
 	notifier := notification.NewNotifier("slack_bot")
 	notifier.Notify(ctx, params)

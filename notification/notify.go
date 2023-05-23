@@ -20,8 +20,10 @@ type Notifier interface {
 type Status string
 
 type NotifyParams struct {
-	Status Status
-	Buffer *bytes.Buffer
+	Status    Status
+	Buffer    *bytes.Buffer
+	Command   string
+	Directory string
 }
 
 func NewNotifier(option string) Notifier {

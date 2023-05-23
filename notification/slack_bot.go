@@ -7,6 +7,12 @@ import (
 	"github.com/slack-go/slack"
 )
 
+var StatusColor = map[Status]string{
+	StatusSuccess:      "green",
+	StatusError:        "red",
+	StatusDiffDetected: "yellow",
+}
+
 type SlackBotNotifier struct {
 	SlackBotToken string
 	SlackChannel  string
@@ -14,32 +20,31 @@ type SlackBotNotifier struct {
 
 func (s *SlackBotNotifier) Notify(ctx context.Context, params *NotifyParams) error {
 	c := slack.New(s.SlackBotToken)
-	switch params.Status {
-	case StatusSuccess:
-		return notifySuccessMessage(c, params)
-	case StatusError:
-		return notifyErrorMessage(c, params)
-	case StatusDiffDetected:
-		return notifyDiffDetectedMessage(c, params)
-	default:
+	return s.notify(ctx, c, params)
+}
+
+func (s *SlackBotNotifier) notify(ctx context.Context, client *slack.Client, params *NotifyParams) error {
+	c := slack.New(s.SlackBotToken)
+	color, ok := StatusColor[params.Status]
+	if !ok {
 		return fmt.Errorf("invalid status: %s", params.Status)
 	}
-}
 
-func notifySuccessMessage(c *slack.Client, params *NotifyParams) error {
-	fmt.Println("slack bot notify success")
-	fmt.Println(string(params.Buffer.String()))
-	return nil
-}
-
-func notifyErrorMessage(c *slack.Client, params *NotifyParams) error {
-	fmt.Println("slack bot notify error")
-	fmt.Println(string(params.Buffer.String()))
-	return nil
-}
-
-func notifyDiffDetectedMessage(c *slack.Client, params *NotifyParams) error {
-	fmt.Println("slack bot notify diff detected")
-	fmt.Println(string(params.Buffer.String()))
+	_, _, err := c.PostMessageContext(ctx, s.SlackChannel, slack.MsgOptionBlocks(
+		slack.NewSectionBlock(
+			&slack.TextBlockObject{
+				Type: "mrkdwn",
+				Text: fmt.Sprintf(":large_%s_square: ", color) + "*terrapolice run result*" + "\n" +
+					"result: " + string(params.Status) + "\n" +
+					"run command: terraform " + params.Command + "\n" +
+					"directory: " + params.Directory + "\n",
+			},
+			nil,
+			nil,
+		),
+	))
+	if err != nil {
+		return fmt.Errorf("error posting message: %w", err)
+	}
 	return nil
 }
