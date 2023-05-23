@@ -50,7 +50,6 @@ func main() {
 	directories := config.getDirectories()
 
 	var wg sync.WaitGroup
-
 	for _, dir := range directories {
 		wg.Add(1)
 		go func(directory string) {

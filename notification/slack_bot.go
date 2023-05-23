@@ -13,6 +13,12 @@ var StatusColor = map[Status]string{
 	StatusDiffDetected: "yellow",
 }
 
+var StatusMessage = map[Status]string{
+	StatusSuccess:      "差分なしです:saluting_face:",
+	StatusError:        "実行時にエラーが発生しました:alert:",
+	StatusDiffDetected: "差分を検知したよ:eyes:",
+}
+
 type SlackBotNotifier struct {
 	SlackBotToken string
 	SlackChannel  string
@@ -30,14 +36,19 @@ func (s *SlackBotNotifier) notify(ctx context.Context, client *slack.Client, par
 		return fmt.Errorf("invalid status: %s", params.Status)
 	}
 
+	message, ok := StatusMessage[params.Status]
+	if !ok {
+		return fmt.Errorf("invalid status: %s", params.Status)
+	}
+
 	_, _, err := c.PostMessageContext(ctx, s.SlackChannel, slack.MsgOptionBlocks(
 		slack.NewSectionBlock(
 			&slack.TextBlockObject{
 				Type: "mrkdwn",
 				Text: fmt.Sprintf(":large_%s_square: ", color) + "*terrapolice run result*" + "\n" +
-					"result: " + string(params.Status) + "\n" +
-					"run command: terraform " + params.Command + "\n" +
-					"directory: " + params.Directory + "\n",
+					"*Directory*: " + params.Directory + "\n" +
+					"*Run command*: terraform " + params.Command + "\n" +
+					"*Result*: " + message + "\n",
 			},
 			nil,
 			nil,
