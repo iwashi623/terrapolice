@@ -111,8 +111,12 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 
 	if command == terraformPlanCommand {
 		notifier := notification.CreateNotifier("slack_bot")
+		status, err := notification.NewStatus("success")
+		if err != nil {
+			return fmt.Errorf("error creating status: %w", err)
+		}
 		params := notification.NotifyParams{
-			Status: "success",
+			Status: status,
 			Buffer: outBuffer,
 		}
 		notifier.Notify(params)
