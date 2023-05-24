@@ -14,7 +14,8 @@ func main() {
 		log.Fatalf("Error parsing arguments: %v", err)
 	}
 
-	exitCode, err := cmd.CLI(context.Background(), args)
+	cli := cmd.NewCLI(args)
+	exitCode, err := cli.Run(context.Background())
 	if err != nil {
 		log.Fatalf("Error running terraform checks: %v", err)
 	}

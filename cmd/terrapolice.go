@@ -14,10 +14,6 @@ import (
 	"github.com/iwashi623/terrapolice/notification"
 )
 
-type Args struct {
-	ConfigPath string
-}
-
 const (
 	terraformInitCommand = "init"
 	terraformPlanCommand = "plan"
@@ -25,16 +21,28 @@ const (
 	ExitCodeError        = 1
 )
 
+type CLI struct {
+	Args *Args
+}
+
+type Args struct {
+	ConfigPath string
+}
+
 type outputLine struct {
 	source string
 	line   string
 }
 
-func CLI(ctx context.Context, args *Args) (int, error) {
-	configPath := args.ConfigPath
+func NewCLI(args *Args) *CLI {
+	return &CLI{
+		Args: args,
+	}
+}
 
+func (cli *CLI) Run(ctx context.Context) (int, error) {
 	// Load configuration
-	config, err := LoadConfig(configPath)
+	config, err := LoadConfig(cli.Args.ConfigPath)
 	if err != nil {
 		return ExitCodeError, fmt.Errorf("loading config: %v", err)
 	}
