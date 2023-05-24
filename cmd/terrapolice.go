@@ -40,13 +40,7 @@ func NewCLI(args *Args) *CLI {
 	}
 }
 
-func (cli *CLI) Run(ctx context.Context) (int, error) {
-	// Load configuration
-	config, err := LoadConfig(cli.Args.ConfigPath)
-	if err != nil {
-		return ExitCodeError, fmt.Errorf("loading config: %v", err)
-	}
-
+func (cli *CLI) Run(ctx context.Context, config *Config) (int, error) {
 	// Run terraform checks
 	exitCode, err := RunTerraformChecks(ctx, config)
 	if err != nil {
@@ -81,11 +75,8 @@ func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, config.Timeout)
-	defer cancel()
-	directories := config.getDirectories()
-
 	var wg sync.WaitGroup
+	directories := config.getDirectories()
 	for _, dir := range directories {
 		wg.Add(1)
 		go func(directory string) {
