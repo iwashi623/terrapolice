@@ -89,15 +89,26 @@ func (cli *CLI) Run(ctx context.Context) (int, error) {
 func (cli *CLI) run(ctx context.Context) int {
 	// 実行時ログを出力するためのチャネルを作成
 	outCh := make(chan outputLine)
-	go func() {
+	go func(outCh <-chan outputLine) {
 		for line := range outCh {
 			// terraformコマンドの実行時ログを出力
 			fmt.Printf("%s: %s\n", line.source, line.line)
 		}
-	}()
+	}(outCh)
 
 	var wg sync.WaitGroup
 
+	dirCh := cli.getDirectoriesChannel()
+
+	cli.processDirectories(ctx, dirCh, outCh, &wg)
+
+	wg.Wait()
+	close(outCh)
+
+	return ExitCodeOK
+}
+
+func (cli *CLI) getDirectoriesChannel() chan string {
 	directories := cli.Config.getDirectories()
 	numDirectories := len(directories)
 
@@ -106,7 +117,10 @@ func (cli *CLI) run(ctx context.Context) int {
 		dirCh <- dir
 	}
 	close(dirCh)
+	return dirCh
+}
 
+func (cli *CLI) processDirectories(ctx context.Context, dirCh chan string, outCh chan outputLine, wg *sync.WaitGroup) {
 	for i := 0; i < maxConcurrency; i++ {
 		wg.Add(1)
 		go func() {
@@ -124,49 +138,63 @@ func (cli *CLI) run(ctx context.Context) int {
 			}
 		}()
 	}
-
-	wg.Wait()
-	close(outCh)
-
-	return ExitCodeOK
 }
 
-func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
+func (cli *CLI) prepareCommand(ctx context.Context, command, directory string) (*exec.Cmd, io.Reader, io.Reader, error) {
 	cmd := exec.CommandContext(ctx, "terraform", command)
 	cmd.Dir = directory
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("error creating stdout pipe: %w", err)
+		return nil, nil, nil, fmt.Errorf("error creating stdout pipe: %w", err)
 	}
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
-		return fmt.Errorf("error creating stderr pipe: %w", err)
+		return nil, nil, nil, fmt.Errorf("error creating stderr pipe: %w", err)
 	}
+
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("error starting command: %w", err)
+		return nil, nil, nil, fmt.Errorf("error starting command: %w", err)
 	}
 
-	outBuffer := &bytes.Buffer{}
-	errBuffer := &bytes.Buffer{}
-	go readOutput(ctx, directory+" [stdout]", stdout, ch, outBuffer)
-	go readOutput(ctx, directory+" [stderr]", stderr, ch, errBuffer)
+	return cmd, stdout, stderr, nil
+}
 
-	err = cmd.Wait()
+func (cli *CLI) monitorCommand(ctx context.Context, cmd *exec.Cmd, directory string, stdout, stderr io.Reader, ch chan<- outputLine) (*bytes.Buffer, *bytes.Buffer, error) {
+	outBuf := &bytes.Buffer{}
+	errBuf := &bytes.Buffer{}
+	go readOutput(ctx, directory+" [stdout]", stdout, ch, outBuf)
+	go readOutput(ctx, directory+" [stderr]", stderr, ch, errBuf)
+
+	err := cmd.Wait()
 
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
-			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
+			return nil, nil, fmt.Errorf("terraform %s in directory %s timed out", cmd.Args, directory)
 		}
-		execErr := cli.execNotify(ctx, command, directory, errBuffer, true)
+	}
+
+	return outBuf, errBuf, err
+}
+
+func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
+	cmd, stdout, stderr, err := cli.prepareCommand(ctx, command, directory)
+	if err != nil {
+		return err
+	}
+
+	outBuf, errBuf, err := cli.monitorCommand(ctx, cmd, directory, stdout, stderr, ch)
+
+	if err != nil {
+		execErr := cli.execNotify(ctx, command, directory, errBuf, true)
 		if execErr != nil {
 			return fmt.Errorf("error running execNotify: %w", execErr)
 		}
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	err = cli.execNotify(ctx, command, directory, outBuffer, false)
+	err = cli.execNotify(ctx, command, directory, outBuf, false)
 	if err != nil {
 		return fmt.Errorf("error running execNotify: %w", err)
 	}
@@ -174,23 +202,32 @@ func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory stri
 	return nil
 }
 
-func (cli *CLI) execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
-	if !cli.Args.Notifiable {
-		return nil
-	}
-
+func (cli *CLI) determineStatus(command string, buf *bytes.Buffer, isError bool) (notification.Status, error) {
 	var statusStr string
 	if isError {
 		statusStr = notification.StatusError
 	} else if command == terraformPlanCmd {
 		statusStr = getStatusStr(buf)
 	} else {
-		return nil
+		return "", nil
 	}
 
 	status, err := notification.NewStatus(statusStr)
 	if err != nil {
-		return fmt.Errorf("error creating status: %w", err)
+		return "", fmt.Errorf("error creating status: %w", err)
+	}
+
+	return status, nil
+}
+
+func (cli *CLI) execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
+	if !cli.Args.Notifiable {
+		return nil
+	}
+
+	statusStr, err := cli.determineStatus(command, buf, isError)
+	if err != nil {
+		return err
 	}
 
 	notifier, err := notification.NewNotifier(cli.Config.Notification)
@@ -199,7 +236,7 @@ func (cli *CLI) execNotify(ctx context.Context, command string, directory string
 	}
 
 	params := &notification.NotifyParams{
-		Status:    status,
+		Status:    statusStr,
 		Buffer:    buf,
 		Command:   command,
 		Directory: directory,
