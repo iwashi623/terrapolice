@@ -13,13 +13,11 @@ const (
 	DefaultTimeout = 300 * time.Second
 )
 
-type Directory struct {
-	Path string `json:"path"`
-}
+type Directory string
 
 type Config struct {
-	BaseDirectory string `json:"base_directory"`
-	Directories   []Directory
+	BaseDirectory string        `json:"base_directory"`
+	Directories   []Directory   `json:"directories"`
 	Timeout       time.Duration `json:"timeout"`
 	Notification  string        `json:"notification"`
 }
@@ -63,7 +61,7 @@ func (c *Config) setTimeOut() error {
 func (c *Config) getDirectories() []string {
 	var combinedPaths []string
 	for _, dir := range c.Directories {
-		combinedPath := filepath.Join(c.BaseDirectory, dir.Path)
+		combinedPath := filepath.Join(c.BaseDirectory, string(dir))
 		combinedPaths = append(combinedPaths, combinedPath)
 	}
 	return combinedPaths
