@@ -21,27 +21,28 @@ type Config struct {
 	BaseDirectory string `json:"base_directory"`
 	Directories   []Directory
 	Timeout       time.Duration `json:"timeout"`
-	Norification  string        `json:"norification"`
+	Notification  string        `json:"notification"`
 }
 
-func LoadConfig(filename string) (*Config, error) {
+func (cli *CLI) loadConfig(filename string) error {
 	f, err := os.Open(filename)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("error opening config file: %w", err)
 	}
 	defer f.Close()
 
 	var config Config
-	err = json.NewDecoder(f).Decode(&config)
-	if err != nil {
-		return nil, err
+	if err := json.NewDecoder(f).Decode(&config); err != nil {
+		return fmt.Errorf("error decoding config: %w", err)
 	}
 
 	if err := config.setTimeOut(); err != nil {
-		return nil, fmt.Errorf("error setting timeout: %w", err)
+		return fmt.Errorf("error setting timeout: %w", err)
 	}
 
-	return &config, nil
+	cli.Config = &config
+
+	return nil
 }
 
 func (c *Config) setTimeOut() error {

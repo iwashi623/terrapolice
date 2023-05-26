@@ -26,22 +26,19 @@ type NotifyParams struct {
 	Directory string
 }
 
-func NewNotifier(option string) Notifier {
+func NewNotifier(option string) (Notifier, error) {
 	switch option {
 	case "slack":
 		return &SlackNotifier{
 			WebhookURL: os.Getenv("SLACK_WEBHOOK_URL"),
-		}
+		}, nil
 	case "slack_bot":
 		return &SlackBotNotifier{
 			SlackBotToken: os.Getenv("SLACK_BOT_TOKEN"),
 			SlackChannel:  os.Getenv("SLACK_CHANNEL"),
-		}
+		}, nil
 	default:
-		return &SlackBotNotifier{
-			SlackBotToken: os.Getenv("SLACK_BOT_TOKEN"),
-			SlackChannel:  os.Getenv("SLACK_CHANNEL"),
-		}
+		return nil, fmt.Errorf("invalid Notification option: %s", option)
 	}
 }
 

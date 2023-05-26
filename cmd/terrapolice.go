@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
 
+	"github.com/fatih/color"
 	"github.com/iwashi623/terrapolice/notification"
 )
 
@@ -23,7 +25,8 @@ const (
 )
 
 type CLI struct {
-	Args *Args
+	Args   *Args
+	Config *Config
 }
 
 type Args struct {
@@ -35,15 +38,28 @@ type outputLine struct {
 	line   string
 }
 
-func NewCLI(args *Args) *CLI {
+type CLIParseFunc func([]string) (*Args, error)
+
+func NewCLI(parseArgs CLIParseFunc) (*CLI, error) {
+	args, err := parseArgs(os.Args)
+	if err != nil {
+		return nil, fmt.Errorf("parsing args: %v", err)
+	}
 	return &CLI{
 		Args: args,
-	}
+	}, nil
 }
 
-func (cli *CLI) Run(ctx context.Context, config *Config) (int, error) {
+func (cli *CLI) Run(ctx context.Context) (int, error) {
+	if err := cli.loadConfig(cli.Args.ConfigPath); err != nil {
+		return ExitCodeError, fmt.Errorf("loading config: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, cli.Config.Timeout)
+	defer cancel()
+
 	// Run terraform checks
-	exitCode, err := RunTerraformChecks(ctx, config)
+	exitCode, err := cli.run(ctx)
 	if err != nil {
 		return ExitCodeError, fmt.Errorf("running terraform checks: %v", err)
 	}
@@ -66,7 +82,7 @@ func ParseArgs(args []string) (*Args, error) {
 	return &Args{ConfigPath: configPath}, nil
 }
 
-func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
+func (cli *CLI) run(ctx context.Context) (int, error) {
 	// 実行時ログを出力するためのチャネルを作成
 	outCh := make(chan outputLine)
 	go func() {
@@ -78,7 +94,7 @@ func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
 
 	var wg sync.WaitGroup
 
-	directories := config.getDirectories()
+	directories := cli.Config.getDirectories()
 	numDirectories := len(directories)
 
 	dirCh := make(chan string, numDirectories)
@@ -93,13 +109,13 @@ func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
 			defer wg.Done()
 			for dir := range dirCh {
 				// Run terraform init
-				if err := runTerraformCommand(ctx, terraformInitCmd, dir, outCh); err != nil {
-					fmt.Printf("Error running terraform init in directory %s: %v\n", dir, err)
+				if err := cli.runTerraformCommand(ctx, terraformInitCmd, dir, outCh); err != nil {
+					color.Red("terraform init failed in directory %s: %v", dir, err)
 					return
 				}
 				// Run terraform plan
-				if err := runTerraformCommand(ctx, terraformPlanCmd, dir, outCh); err != nil {
-					fmt.Printf("Error running terraform plan in directory %s: %v\n", dir, err)
+				if err := cli.runTerraformCommand(ctx, terraformPlanCmd, dir, outCh); err != nil {
+					color.Red("terraform plan failed in directory %s: %v", dir, err)
 				}
 			}
 		}()
@@ -111,20 +127,7 @@ func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
 	return ExitCodeOK, nil
 }
 
-func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outputLine, buffer *bytes.Buffer) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		line := scanner.Text()
-		select {
-		case <-ctx.Done():
-			return
-		case ch <- outputLine{source, line}:
-		}
-		buffer.WriteString(line + "\n")
-	}
-}
-
-func runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
+func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
 	cmd := exec.CommandContext(ctx, "terraform", command)
 	cmd.Dir = directory
 
@@ -152,14 +155,14 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 		if ctx.Err() == context.DeadlineExceeded {
 			return fmt.Errorf("terraform %s in directory %s timed out", command, directory)
 		}
-		execErr := execNotify(ctx, command, directory, errBuffer, true)
+		execErr := cli.execNotify(ctx, command, directory, errBuffer, true)
 		if execErr != nil {
 			return fmt.Errorf("error running execNotify: %w", execErr)
 		}
 		return fmt.Errorf("error running terraform %s: %w", command, err)
 	}
 
-	err = execNotify(ctx, command, directory, outBuffer, false)
+	err = cli.execNotify(ctx, command, directory, outBuffer, false)
 	if err != nil {
 		return fmt.Errorf("error running execNotify: %w", err)
 	}
@@ -167,7 +170,7 @@ func runTerraformCommand(ctx context.Context, command, directory string, ch chan
 	return nil
 }
 
-func execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
+func (cli *CLI) execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
 	var statusStr string
 	if isError {
 		statusStr = notification.StatusError
@@ -181,15 +184,33 @@ func execNotify(ctx context.Context, command string, directory string, buf *byte
 	if err != nil {
 		return fmt.Errorf("error creating status: %w", err)
 	}
+
+	notifier, err := notification.NewNotifier(cli.Config.Notification)
+	if err != nil {
+		return fmt.Errorf("error creating notifier: %w", err)
+	}
+
 	params := &notification.NotifyParams{
 		Status:    status,
 		Buffer:    buf,
 		Command:   command,
 		Directory: directory,
 	}
-	notifier := notification.NewNotifier("slack_bot")
 	notifier.Notify(ctx, params)
 	return nil
+}
+
+func readOutput(ctx context.Context, source string, r io.Reader, ch chan<- outputLine, buffer *bytes.Buffer) {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		line := scanner.Text()
+		select {
+		case <-ctx.Done():
+			return
+		case ch <- outputLine{source, line}:
+		}
+		buffer.WriteString(line + "\n")
+	}
 }
 
 func getStatusStr(buf *bytes.Buffer) string {

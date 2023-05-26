@@ -5,27 +5,20 @@ import (
 	"log"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/iwashi623/terrapolice/cmd"
 )
 
 func main() {
-	args, err := cmd.ParseArgs(os.Args)
+	cli, err := cmd.NewCLI(cmd.ParseArgs)
 	if err != nil {
-		log.Fatalf("Error parsing arguments: %v", err)
+		log.Fatalf("Error creating CLI: %v", err)
 	}
 
-	config, err := cmd.LoadConfig(args.ConfigPath)
+	ctx := context.Background()
+	exitCode, err := cli.Run(ctx)
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
-	defer cancel()
-
-	cli := cmd.NewCLI(args)
-	exitCode, err := cli.Run(ctx, config)
-	if err != nil {
-		log.Fatalf("Error running terraform checks: %v", err)
+		color.Red(err.Error())
 	}
 
 	os.Exit(exitCode)
