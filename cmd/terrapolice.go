@@ -40,6 +40,20 @@ type outputLine struct {
 
 type CLIParseFunc func([]string) (*Args, error)
 
+func ParseArgs(args []string) (*Args, error) {
+	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
+
+	var configPath string
+	flags.StringVar(&configPath, "f", "terrapolice.json", "Path to the configuration file")
+
+	err := flags.Parse(args[1:])
+	if err != nil {
+		return nil, err
+	}
+
+	return &Args{ConfigPath: configPath}, nil
+}
+
 func NewCLI(parseArgs CLIParseFunc) (*CLI, error) {
 	args, err := parseArgs(os.Args)
 	if err != nil {
@@ -63,20 +77,6 @@ func (cli *CLI) Run(ctx context.Context) (int, error) {
 
 	// All done
 	return exitCode, nil
-}
-
-func ParseArgs(args []string) (*Args, error) {
-	flags := flag.NewFlagSet(args[0], flag.ExitOnError)
-
-	var configPath string
-	flags.StringVar(&configPath, "f", "terrapolice.json", "Path to the configuration file")
-
-	err := flags.Parse(args[1:])
-	if err != nil {
-		return nil, err
-	}
-
-	return &Args{ConfigPath: configPath}, nil
 }
 
 func (cli *CLI) run(ctx context.Context) int {

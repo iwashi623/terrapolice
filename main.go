@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 
-	"github.com/fatih/color"
 	"github.com/iwashi623/terrapolice/cmd"
 )
 
@@ -18,7 +17,7 @@ func main() {
 	ctx := context.Background()
 	exitCode, err := cli.Run(ctx)
 	if err != nil {
-		color.Red(err.Error())
+		log.Fatalf("Error running CLI: %v", err)
 	}
 
 	os.Exit(exitCode)
