@@ -15,10 +15,11 @@ import (
 )
 
 const (
-	terraformInitCommand = "init"
-	terraformPlanCommand = "plan"
-	ExitCodeOK           = 0
-	ExitCodeError        = 1
+	terraformInitCmd = "init"
+	terraformPlanCmd = "plan"
+	ExitCodeOK       = 0
+	ExitCodeError    = 1
+	maxConcurrency   = 10
 )
 
 type CLI struct {
@@ -70,27 +71,38 @@ func RunTerraformChecks(ctx context.Context, config *Config) (int, error) {
 	outCh := make(chan outputLine)
 	go func() {
 		for line := range outCh {
-			// 実行時ログを出力
+			// terraformコマンドの実行時ログを出力
 			fmt.Printf("%s: %s\n", line.source, line.line)
 		}
 	}()
 
 	var wg sync.WaitGroup
+
 	directories := config.getDirectories()
+	numDirectories := len(directories)
+
+	dirCh := make(chan string, numDirectories)
 	for _, dir := range directories {
+		dirCh <- dir
+	}
+	close(dirCh)
+
+	for i := 0; i < maxConcurrency; i++ {
 		wg.Add(1)
-		go func(directory string) {
+		go func() {
 			defer wg.Done()
-			// Run terraform init
-			if err := runTerraformCommand(ctx, terraformInitCommand, directory, outCh); err != nil {
-				fmt.Printf("Error running terraform init in directory %s: %v\n", directory, err)
-				return
+			for dir := range dirCh {
+				// Run terraform init
+				if err := runTerraformCommand(ctx, terraformInitCmd, dir, outCh); err != nil {
+					fmt.Printf("Error running terraform init in directory %s: %v\n", dir, err)
+					return
+				}
+				// Run terraform plan
+				if err := runTerraformCommand(ctx, terraformPlanCmd, dir, outCh); err != nil {
+					fmt.Printf("Error running terraform plan in directory %s: %v\n", dir, err)
+				}
 			}
-			// Run terraform plan
-			if err := runTerraformCommand(ctx, terraformPlanCommand, directory, outCh); err != nil {
-				fmt.Printf("Error running terraform plan in directory %s: %v\n", directory, err)
-			}
-		}(dir)
+		}()
 	}
 
 	wg.Wait()
@@ -159,7 +171,7 @@ func execNotify(ctx context.Context, command string, directory string, buf *byte
 	var statusStr string
 	if isError {
 		statusStr = notification.StatusError
-	} else if command == terraformPlanCommand {
+	} else if command == terraformPlanCmd {
 		statusStr = getStatusStr(buf)
 	} else {
 		return nil
