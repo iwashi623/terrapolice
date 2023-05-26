@@ -28,6 +28,7 @@ func (notifer *SlackNotifier) Notify(ctx context.Context, params *NotifyParams) 
 
 	msg := slack.WebhookMessage{
 		Username: SlackBotUserName,
+		IconURL:  SlackBotIconURL,
 		Text: fmt.Sprintf(":large_%s_square: ", color) + "*terrapolice run result*" + "\n" +
 			"*Directory*: " + params.Directory + "\n" +
 			"*Run command*: terraform " + params.Command + "\n" +

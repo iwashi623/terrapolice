@@ -13,6 +13,7 @@ const (
 	StatusDiffDetected = "diff_detected"
 
 	SlackBotUserName = "terrapolice"
+	SlackBotIconURL  = "https://raw.githubusercontent.com/iwashi623/terrapolice/main/images/terrapolice.png"
 )
 
 var StatusColor = map[Status]string{
