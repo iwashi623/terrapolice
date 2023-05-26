@@ -31,6 +31,7 @@ type CLI struct {
 
 type Args struct {
 	ConfigPath string
+	Notifiable bool
 }
 
 type outputLine struct {
@@ -46,12 +47,18 @@ func ParseArgs(args []string) (*Args, error) {
 	var configPath string
 	flags.StringVar(&configPath, "f", "terrapolice.json", "Path to the configuration file")
 
+	var notifiable bool
+	flags.BoolVar(&notifiable, "n", false, "Enable notification")
+
 	err := flags.Parse(args[1:])
 	if err != nil {
 		return nil, err
 	}
 
-	return &Args{ConfigPath: configPath}, nil
+	return &Args{
+		ConfigPath: configPath,
+		Notifiable: notifiable,
+	}, nil
 }
 
 func NewCLI(parseArgs CLIParseFunc) (*CLI, error) {
@@ -168,6 +175,10 @@ func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory stri
 }
 
 func (cli *CLI) execNotify(ctx context.Context, command string, directory string, buf *bytes.Buffer, isError bool) error {
+	if !cli.Args.Notifiable {
+		return nil
+	}
+
 	var statusStr string
 	if isError {
 		statusStr = notification.StatusError
