@@ -11,7 +11,21 @@ const (
 	StatusSuccess      = "success"
 	StatusError        = "error"
 	StatusDiffDetected = "diff_detected"
+
+	SlackBotUserName = "terrapolice"
 )
+
+var StatusColor = map[Status]string{
+	StatusSuccess:      "green",
+	StatusError:        "red",
+	StatusDiffDetected: "yellow",
+}
+
+var StatusMessage = map[Status]string{
+	StatusSuccess:      "差分なしです:saluting_face:",
+	StatusError:        "実行時にエラーが発生しました:alert:",
+	StatusDiffDetected: "差分を検知したよ:eyes:",
+}
 
 type Notifier interface {
 	Notify(ctx context.Context, params *NotifyParams) error

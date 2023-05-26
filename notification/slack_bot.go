@@ -7,30 +7,18 @@ import (
 	"github.com/slack-go/slack"
 )
 
-var StatusColor = map[Status]string{
-	StatusSuccess:      "green",
-	StatusError:        "red",
-	StatusDiffDetected: "yellow",
-}
-
-var StatusMessage = map[Status]string{
-	StatusSuccess:      "差分なしです:saluting_face:",
-	StatusError:        "実行時にエラーが発生しました:alert:",
-	StatusDiffDetected: "差分を検知したよ:eyes:",
-}
-
 type SlackBotNotifier struct {
 	SlackBotToken string
 	SlackChannel  string
 }
 
-func (s *SlackBotNotifier) Notify(ctx context.Context, params *NotifyParams) error {
-	c := slack.New(s.SlackBotToken)
-	return s.notify(ctx, c, params)
+func (notifer *SlackBotNotifier) Notify(ctx context.Context, params *NotifyParams) error {
+	c := slack.New(notifer.SlackBotToken)
+	return notifer.notify(ctx, c, params)
 }
 
-func (s *SlackBotNotifier) notify(ctx context.Context, client *slack.Client, params *NotifyParams) error {
-	c := slack.New(s.SlackBotToken)
+func (notifer *SlackBotNotifier) notify(ctx context.Context, client *slack.Client, params *NotifyParams) error {
+	c := slack.New(notifer.SlackBotToken)
 	color, ok := StatusColor[params.Status]
 	if !ok {
 		return fmt.Errorf("invalid status: %s", params.Status)
@@ -41,7 +29,7 @@ func (s *SlackBotNotifier) notify(ctx context.Context, client *slack.Client, par
 		return fmt.Errorf("invalid status: %s", params.Status)
 	}
 
-	_, _, err := c.PostMessageContext(ctx, s.SlackChannel, slack.MsgOptionBlocks(
+	_, _, err := c.PostMessageContext(ctx, notifer.SlackChannel, slack.MsgOptionBlocks(
 		slack.NewSectionBlock(
 			&slack.TextBlockObject{
 				Type: "mrkdwn",
