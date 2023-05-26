@@ -59,10 +59,7 @@ func (cli *CLI) Run(ctx context.Context) (int, error) {
 	defer cancel()
 
 	// Run terraform checks
-	exitCode, err := cli.run(ctx)
-	if err != nil {
-		return ExitCodeError, fmt.Errorf("running terraform checks: %v", err)
-	}
+	exitCode := cli.run(ctx)
 
 	// All done
 	return exitCode, nil
@@ -82,7 +79,7 @@ func ParseArgs(args []string) (*Args, error) {
 	return &Args{ConfigPath: configPath}, nil
 }
 
-func (cli *CLI) run(ctx context.Context) (int, error) {
+func (cli *CLI) run(ctx context.Context) int {
 	// 実行時ログを出力するためのチャネルを作成
 	outCh := make(chan outputLine)
 	go func() {
@@ -124,7 +121,7 @@ func (cli *CLI) run(ctx context.Context) (int, error) {
 	wg.Wait()
 	close(outCh)
 
-	return ExitCodeOK, nil
+	return ExitCodeOK
 }
 
 func (cli *CLI) runTerraformCommand(ctx context.Context, command, directory string, ch chan<- outputLine) error {
